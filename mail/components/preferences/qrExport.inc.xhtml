@@ -2,12 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 <html:template id="paneQrExport" xmlns="http://www.w3.org/1999/xhtml">
-  <div
-    id="qrExportPaneCategory"
-    class="subcategory"
-    data-category="paneQrExport"
-  >
+  <div class="subcategory" data-category="paneQrExport">
     <h1 data-l10n-id="qr-export-pane-header"></h1>
+  </div>
+# groupbox and xul label for search functionality.
+  <xul:groupbox
+    id="qrExportContent"
+    data-category="paneQrExport"
+    data-hidden-from-search="true"
+  >
+    <xul:label class="search-header" hidden="true">
+      <h2 data-l10n-id="qr-export-pane-header"></h2>
+    </xul:label>
     <section id="qrExportIntro">
       <p data-l10n-id="qr-export-description"></p>
       <p
@@ -82,7 +88,51 @@
         </div>
       </form>
     </section>
-  </div>
+    <section id="qrExportCodes" hidden="hidden">
+      <p id="qrExportScanDescription"></p>
+      <ol class="qr-panel">
+        <li data-l10n-id="qr-export-scan-step1"></li>
+        <li data-l10n-id="qr-export-scan-step2"></li>
+        <li data-l10n-id="qr-export-scan-step3"></li>
+        <li data-l10n-id="qr-export-scan-step4-revision"></li>
+      </ol>
+      <section class="qr-panel">
+        <qr-code-wizard id="qrCodeWizard"></qr-code-wizard>
+        <div class="qr-nav">
+          <button
+            id="qrExportCodesBack"
+            type="button"
+            data-l10n-id="qr-export-back"
+          ></button>
+          <button
+            id="qrExportCodesNext"
+            type="button"
+            class="primary"
+            data-l10n-id="qr-export-next"
+          ></button>
+        </div>
+      </section>
+    </section>
+    <section id="qrExportSummary" hidden="hidden">
+      <p data-l10n-id="qr-export-summary-description"></p>
+      <div class="qr-panel">
+        <h2 data-l10n-id="qr-export-summary-title"></h2>
+        <ul id="qrExportSummaryList">
+          <li id="qrExportSummaryQrCodes"></li>
+          <li>
+            <span id="qrExportSummaryAccounts"></span>
+            <ul id="qrExportSummaryAccountList"></ul>
+          </li>
+          <li id="qrExportSummaryPasswords"></li>
+        </ul>
+      </div>
+      <button
+        id="qrExportRestart"
+        data-l10n-id="qr-export-more-accounts"
+        type="button"
+      ></button>
+    </section>
+  </xul:groupbox>
 </html:template>
 <html:template id="qrAccountItem" xmlns="http://www.w3.org/1999/xhtml">
   <li>
@@ -90,4 +140,10 @@
       <input type="checkbox" checked="checked" />
     </label>
   </li>
+</html:template>
+<html:template id="qrCodeWizardTemplate" xmlns="http://www.w3.org/1999/xhtml">
+  <figure>
+    <figcaption></figcaption>
+    <img alt="" src="" />
+  </figure>
 </html:template>

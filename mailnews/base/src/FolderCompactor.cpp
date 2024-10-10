@@ -308,9 +308,11 @@ static nsresult BuildKeepMap(nsIMsgDatabase* db,
 
     // No store token => No local copy of message.
     nsAutoCString token;
-    rv = hdr->GetStringProperty("storeToken", token);
+    rv = hdr->GetStoreToken(token);
     NS_ENSURE_SUCCESS(rv, rv);
     if (token.IsEmpty()) {
+      MOZ_LOG(gCompactLog, LogLevel::Verbose,
+              ("keepmap: ignore msgKey=%" PRIu32 " (no storeToken)", msgKey));
       continue;
     }
 
@@ -324,9 +326,12 @@ static nsresult BuildKeepMap(nsIMsgDatabase* db,
     if (!pendingRemoval.IsEmpty()) {
       // Clear the storeToken and Offline flag to make it clear message is no
       // longer stored locally.
-      hdr->SetStringProperty("storeToken", EmptyCString());
+      hdr->SetStoreToken(EmptyCString());
       uint32_t resultFlags;
       hdr->AndFlags(~nsMsgMessageFlags::Offline, &resultFlags);
+      MOZ_LOG(gCompactLog, LogLevel::Verbose,
+              ("keepmap: ignore msgKey=%" PRIu32 " (pendingRemoval is set)",
+               msgKey));
       continue;
     }
 
@@ -335,7 +340,8 @@ static nsresult BuildKeepMap(nsIMsgDatabase* db,
     NS_ENSURE_TRUE(keepMap.put(token, msgKey), NS_ERROR_OUT_OF_MEMORY);
 
     MOZ_LOG(gCompactLog, LogLevel::Verbose,
-            ("keepmap '%s' => %" PRIu32 "", token.get(), msgKey));
+            ("keepmap: storeToken '%s' => msgKey %" PRIu32 "", token.get(),
+             msgKey));
   }
   return NS_OK;
 }
@@ -418,13 +424,7 @@ NS_IMETHODIMP FolderCompactor::OnMessageRetained(nsACString const& oldToken,
   nsCOMPtr<nsIMsgDBHdr> hdr;
   nsresult rv = mDB->GetMsgHdrForKey(key, getter_AddRefs(hdr));
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = hdr->SetStringProperty("storeToken", newToken);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Just until Bug 1720047 is out of the way...
-  // For mbox the storeToken is a file offset.
-  uint64_t offset = ParseUint64Str(PromiseFlatCString(newToken).get());
-  rv = hdr->SetMessageOffset(offset);
+  rv = hdr->SetStoreToken(newToken);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // For IMAP and news, .offlineMessageSize is the local size.

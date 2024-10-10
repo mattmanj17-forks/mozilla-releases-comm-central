@@ -747,25 +747,17 @@ nsMsgDBFolder::GetMsgInputStream(nsIMsgDBHdr* aMsgHdr,
   nsresult rv = GetMsgStore(getter_AddRefs(msgStore));
   NS_ENSURE_SUCCESS(rv, rv);
   nsCString storeToken;
-  rv = aMsgHdr->GetStringProperty("storeToken", storeToken);
+  rv = aMsgHdr->GetStoreToken(storeToken);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Handle legacy DB which has mbox offset but no storeToken.
-  // If this is still needed (open question), it should be done as separate
-  // migration pass, probably at folder creation when store and DB are set
-  // up (but that's tricky at the moment, because the DB is created
-  // on-demand).
   if (storeToken.IsEmpty()) {
-    nsAutoCString storeType;
-    msgStore->GetStoreType(storeType);
-    if (!storeType.EqualsLiteral("mbox")) {
-      return NS_ERROR_FAILURE;  // DB is missing storeToken.
-    }
-    uint64_t offset;
-    aMsgHdr->GetMessageOffset(&offset);
-    storeToken = nsPrintfCString("%" PRIu64, offset);
-    rv = aMsgHdr->SetStringProperty("storeToken", storeToken);
-    NS_ENSURE_SUCCESS(rv, rv);
+    // DB is missing storeToken.
+    // We haven't got an offline copy (or we can't find it) so let's clear the
+    // offline flag. Hopefully the code calling this function will notice and
+    // download the message.
+    uint32_t flagsOut;
+    aMsgHdr->AndFlags(~nsMsgMessageFlags::Offline, &flagsOut);
+    return NS_ERROR_FAILURE;
   }
 
   rv = msgStore->GetMsgInputStream(this, storeToken, aInputStream);
@@ -1454,6 +1446,7 @@ nsresult nsMsgDBFolder::EndNewOfflineMessage(nsresult status) {
   nsCOMPtr<nsISeekableStream> seekable;
   if (m_tempMessageStream) seekable = do_QueryInterface(m_tempMessageStream);
   if (seekable) {
+    nsCString storeToken;
     uint64_t messageOffset;
     uint32_t messageSize;
     int64_t curStorePos;
@@ -1461,7 +1454,9 @@ nsresult nsMsgDBFolder::EndNewOfflineMessage(nsresult status) {
 
     // N.B. This only works if we've set the offline flag for the message,
     // so be careful about moving the call to MarkOffline above.
-    m_offlineHeader->GetMessageOffset(&messageOffset);
+    m_offlineHeader->GetStoreToken(storeToken);
+    messageOffset = storeToken.ToInteger64(&rv);
+    NS_ENSURE_SUCCESS(rv, rv);
     curStorePos -= messageOffset;
     m_offlineHeader->GetMessageSize(&messageSize);
     messageSize += m_bytesAddedToLocalMsg;

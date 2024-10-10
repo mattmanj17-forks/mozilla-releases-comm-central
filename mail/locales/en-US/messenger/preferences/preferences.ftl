@@ -1094,3 +1094,57 @@ qr-export-security-hint = By scanning the following QR codes, your account setti
 qr-export-security-warning = For your security, please ensure you are in a private setting and only scan QR codes from trusted sources.
 
 qr-export-start-export = Export
+
+# Variables:
+# $count (Number) - Total number of QR codes to step through.
+# $step (Number) - Current step number of the QR code displayed.
+qr-export-scan-progress = { $count ->
+    [one] { $step } of { $count } QR code
+    *[other] { $step } of { $count } QR codes
+}
+
+# Variables:
+# $count (Number) - Total number of QR codes to step through.
+qr-export-scan-description = { $count ->
+    [one] Scan QR code with { -brand-product-name } on your mobile device
+    *[other] Scan QR codes with { -brand-product-name } on your mobile device
+}
+
+qr-export-scan-step1 = Open { -brand-product-name } on your mobile device
+qr-export-scan-step2 = Go to settings
+
+# The strong label should match https://hosted.weblate.org/translate/tb-android/settings-import/en/?checksum=bd1817a6fc9f758b&sort_by=-priority,position#translations
+qr-export-scan-step3 = Select <strong>Import settings</strong>
+
+# The strong label should match https://hosted.weblate.org/translate/tb-android/settings-import/en/?checksum=0db0b6c1d176a59b&sort_by=-priority,position#translations
+qr-export-scan-step4-revision = Tap <strong>Scan QR code</strong> and hold your phone over this code
+
+qr-export-back = Back
+
+qr-export-next = Next
+
+qr-export-done = Done
+
+qr-export-summary-description = Accounts exported. Continue on your mobile device.
+
+qr-export-summary-title = Export summary:
+
+# Variables:
+# $count (Number) - Total number of QR codes shown to the user.
+qr-export-summary-qr-count = { $count ->
+    [one] { $count } QR code generated
+    *[other] { $count } QR codes generated
+}
+
+# Variables:
+# $count (Number) - Number of accounts included in the export.
+qr-export-summary-accounts = { $count ->
+    [one] { $count } account exported:
+    *[other] { $count } accounts exported:
+}
+
+qr-export-summary-passwords-included = Passwords included
+
+qr-export-summary-passwords-excluded = Passwords excluded
+
+qr-export-more-accounts = Export more accounts

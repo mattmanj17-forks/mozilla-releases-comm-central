@@ -312,6 +312,8 @@ nsresult MboxCompactor::BeginCompaction() {
   nsresult rv = mFolder->GetFilePath(getter_AddRefs(mMboxPath));
   NS_ENSURE_SUCCESS(rv, rv);
 
+  MOZ_LOG(gMboxLog, LogLevel::Info,
+          ("Begin compacting '%s'.", mMboxPath->HumanReadablePath().get()));
   bool exists;
   rv = mMboxPath->Exists(&exists);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -476,6 +478,9 @@ NS_IMETHODIMP MboxCompactor::OnStopRequest(nsIRequest* req, nsresult status) {
 NS_IMETHODIMP MboxCompactor::OnStopScan(nsresult status) {
   nsresult rv = status;
 
+  MOZ_LOG(gMboxLog, LogLevel::Info,
+          ("Finished compacting '%s' status=0x%x.",
+           mMboxPath->HumanReadablePath().get(), (uint32_t)status));
   if (NS_SUCCEEDED(rv)) {
     nsCOMPtr<nsISafeOutputStream> safe = do_QueryInterface(mDestStream, &rv);
     if (NS_SUCCEEDED(rv)) {
@@ -1207,10 +1212,17 @@ nsresult nsMsgBrkMBoxStore::InternalGetNewMsgOutputStream(
   nsCOMPtr<nsIMsgDatabase> db;
   aFolder->GetMsgDatabase(getter_AddRefs(db));
   if (!db && !*aNewMsgHdr) NS_WARNING("no db, and no message header");
-  bool exists = false;
 
+  MOZ_LOG(gMboxLog, LogLevel::Info,
+          ("Opening mbox file '%s' for writing.",
+           mboxFile->HumanReadablePath().get()));
+
+  bool exists = false;
   mboxFile->Exists(&exists);
   if (!exists) {
+    MOZ_LOG(gMboxLog, LogLevel::Info,
+            ("'%s' does not exist, so creating it now.",
+             mboxFile->HumanReadablePath().get()));
     rv = mboxFile->Create(nsIFile::NORMAL_FILE_TYPE, 0600);
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -1252,8 +1264,7 @@ nsresult nsMsgBrkMBoxStore::InternalGetNewMsgOutputStream(
     rv = seekable->Tell(&filePos);
     NS_ENSURE_SUCCESS(rv, rv);
     nsCString storeToken = nsPrintfCString("%" PRId64, filePos);
-    (*aNewMsgHdr)->SetStringProperty("storeToken", storeToken);
-    (*aNewMsgHdr)->SetMessageOffset(filePos);
+    (*aNewMsgHdr)->SetStoreToken(storeToken);
   }
   // Up and running. Add the folder to the OutstandingStreams set.
   MOZ_ALWAYS_TRUE(m_OutstandingStreams.putNew(folderURI, *aResult));
@@ -1297,10 +1308,13 @@ nsMsgBrkMBoxStore::DiscardNewMessage(nsIOutputStream* aOutputStream,
           tmp->GetFileSize(&fileSize);
         }
       }
+      MOZ_LOG(
+          gMboxLog, LogLevel::Info,
+          ("DISCARD MSG stream=0x%p folder=%s mboxPath='%s' filesize=%" PRId64
+           "",
+           aOutputStream, folderURI.get(), mboxPath->HumanReadablePath().get(),
+           fileSize));
     }
-    MOZ_LOG(gMboxLog, LogLevel::Info,
-            ("DISCARD MSG stream=0x%p folder=%s filesize=%" PRId64 "",
-             aOutputStream, folderURI.get(), fileSize));
   }
 
   // Remove the folder from the OutstandingStreams set.
@@ -1484,8 +1498,10 @@ NS_IMETHODIMP nsMsgBrkMBoxStore::ChangeFlags(
     }
 
     // Rewrite flags into X-Mozilla-Status headers.
-    uint64_t msgOffset;
-    rv = msgHdr->GetMessageOffset(&msgOffset);
+    nsAutoCString storeToken;
+    rv = msgHdr->GetStoreToken(storeToken);
+    NS_ENSURE_SUCCESS(rv, rv);
+    uint64_t msgOffset = storeToken.ToInteger64(&rv);
     NS_ENSURE_SUCCESS(rv, rv);
     seekable->Seek(nsISeekableStream::NS_SEEK_SET, msgOffset);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1520,8 +1536,11 @@ NS_IMETHODIMP nsMsgBrkMBoxStore::ChangeKeywords(
   NS_ENSURE_SUCCESS(rv, rv);
 
   for (auto msgHdr : aHdrArray) {
-    uint64_t msgStart;
-    msgHdr->GetMessageOffset(&msgStart);
+    nsAutoCString storeToken;
+    rv = msgHdr->GetStoreToken(storeToken);
+    NS_ENSURE_SUCCESS(rv, rv);
+    uint64_t msgStart = storeToken.ToInteger64(&rv);
+    NS_ENSURE_SUCCESS(rv, rv);
     seekable->Seek(nsISeekableStream::NS_SEEK_SET, msgStart);
     NS_ENSURE_SUCCESS(rv, rv);
 

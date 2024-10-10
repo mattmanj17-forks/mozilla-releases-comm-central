@@ -8,22 +8,26 @@ const { MailServices } = ChromeUtils.importESModule(
   "resource:///modules/MailServices.sys.mjs"
 );
 
-let prefsWindow, prefsDocument, tabmail;
+let prefsWindow, prefsDocument, tabmail, popAccount;
 
 add_setup(async function () {
-  const imapServer = MailServices.accounts.createIncomingServer(
-    "imap@foo.invalid",
-    "foo.invalid",
-    "imap"
-  );
-  imapServer.password = "password";
-  const imapIdentity = MailServices.accounts.createIdentity();
-  imapIdentity.email = "imap@foo.invalid";
-  const imapAccount = MailServices.accounts.createAccount();
-  imapAccount.incomingServer = imapServer;
-  imapAccount.addIdentity(imapIdentity);
-  const imapOutgoing = MailServices.outgoingServer.createServer("smtp");
-  imapIdentity.smtpServerKey = imapOutgoing.key;
+  const imapAccounts = [];
+  for (let i = 0; i < 4; ++i) {
+    const imapServer = MailServices.accounts.createIncomingServer(
+      `imap${i}@foo.invalid`,
+      "foo.invalid",
+      "imap"
+    );
+    imapServer.password = "password";
+    const imapIdentity = MailServices.accounts.createIdentity();
+    imapIdentity.email = `imap${i}@foo.invalid`;
+    const imapAccount = MailServices.accounts.createAccount();
+    imapAccount.incomingServer = imapServer;
+    imapAccount.addIdentity(imapIdentity);
+    const imapOutgoing = MailServices.outgoingServer.createServer("smtp");
+    imapIdentity.smtpServerKey = imapOutgoing.key;
+    imapAccounts.push(imapAccount);
+  }
 
   const popServer = MailServices.accounts.createIncomingServer(
     "pop@foo.invalid",
@@ -33,7 +37,7 @@ add_setup(async function () {
   popServer.password = "password";
   const popIdentity = MailServices.accounts.createIdentity();
   popIdentity.email = "pop@foo.invalid";
-  const popAccount = MailServices.accounts.createAccount();
+  popAccount = MailServices.accounts.createAccount();
   popAccount.incomingServer = popServer;
   popAccount.addIdentity(popIdentity);
   const popOutgoing = MailServices.outgoingServer.createServer("smtp");
@@ -43,7 +47,9 @@ add_setup(async function () {
   tabmail = document.getElementById("tabmail");
 
   registerCleanupFunction(() => {
-    MailServices.accounts.removeAccount(imapAccount, false);
+    for (const imapAccount of imapAccounts) {
+      MailServices.accounts.removeAccount(imapAccount, false);
+    }
     MailServices.accounts.removeAccount(popAccount, false);
   });
 });
@@ -52,6 +58,10 @@ add_task(async function test_init() {
   Assert.ok(
     BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportIntro")),
     "Intro screen should be visible by default"
+  );
+  Assert.ok(
+    BrowserTestUtils.isHidden(prefsDocument.getElementById("qrExportCodes")),
+    "QR codes screen should be hidden by default"
   );
 
   const exportButton = prefsDocument.getElementById("qrExportStart");
@@ -70,8 +80,8 @@ add_task(async function test_init() {
 
   Assert.equal(
     availableAccounts.length,
-    2,
-    "Should show two available accounts"
+    5,
+    "Should show all available accounts"
   );
   Assert.ok(
     prefsDocument.getElementById("qrExportSelectAll").disabled,
@@ -146,4 +156,251 @@ add_task(async function test_selectionUpdate() {
   await subtest_selectionState(0, false, true);
   await subtest_selectionState(1, false, false);
   await subtest_selectionState(Infinity, true, false);
+});
+
+/**
+ * Step the QR code wizard and verify the displayed code changes.
+ *
+ * @param {"Next"|"Back"} direction
+ */
+async function stepQRCode(direction) {
+  const img = prefsDocument.querySelector("#qrCodeWizard img");
+  const currentCode = img.src;
+
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById(`qrExportCodes${direction}`),
+    {},
+    prefsWindow
+  );
+
+  await BrowserTestUtils.waitForMutationCondition(
+    img,
+    {
+      attributes: true,
+      attributeFilter: ["src"],
+    },
+    () => img.src != currentCode
+  );
+}
+
+add_task(async function test_stepThroughQrCodes() {
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportIntro")),
+    "Intro screen should be visible"
+  );
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportStart"),
+    {},
+    prefsWindow
+  );
+
+  Assert.ok(
+    BrowserTestUtils.isHidden(prefsDocument.getElementById("qrExportIntro")),
+    "Intro screen should no longer be visible"
+  );
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportCodes")),
+    "QR codes screen should be shown now"
+  );
+
+  Assert.equal(
+    prefsDocument.getElementById("qrCodeWizard").getTotalSteps(),
+    2,
+    "Should expect two steps"
+  );
+
+  Assert.equal(
+    prefsDocument.getElementById("qrExportCodesNext").dataset.l10nId,
+    "qr-export-next",
+    "Should show next button initially"
+  );
+  const description = prefsDocument.getElementById("qrExportScanDescription");
+  Assert.equal(
+    description.dataset.l10nId,
+    "qr-export-scan-description",
+    "Should show scan description string"
+  );
+  Assert.deepEqual(
+    JSON.parse(description.dataset.l10nArgs),
+    { count: 2 },
+    "Should have correct step count as string argument"
+  );
+
+  await stepQRCode("Next");
+
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportCodes")),
+    "QR codes screen should still be shown"
+  );
+  Assert.equal(
+    prefsDocument.getElementById("qrExportCodesNext").dataset.l10nId,
+    "qr-export-done",
+    "Should show done button at end"
+  );
+
+  await stepQRCode("Back");
+
+  Assert.equal(
+    prefsDocument.getElementById("qrExportCodesNext").dataset.l10nId,
+    "qr-export-next",
+    "Should switch back to next label"
+  );
+
+  // Back to intro
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportCodesBack"),
+    {},
+    prefsWindow
+  );
+
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportIntro")),
+    "Should be back to intro screen"
+  );
+  Assert.ok(
+    BrowserTestUtils.isHidden(prefsDocument.getElementById("qrExportCodes")),
+    "Should no longer show QR codes"
+  );
+});
+
+/**
+ * Set up export form to only have a single account checked and apply a
+ * requested value to the passwords checkbox.
+ *
+ * @param {boolean} includePasswords - If passwords should be included in the
+ *   export.
+ */
+async function selectSingleAccountAndSetIncludePasswords(includePasswords) {
+  for (const option of prefsDocument.querySelectorAll(
+    "#qrExportAccountsList input"
+  )) {
+    option.checked = option.value === popAccount.key;
+  }
+  prefsDocument.getElementById("qrExportIncludePasswords").checked =
+    includePasswords;
+}
+
+add_task(async function test_completeCycleWithSummary() {
+  selectSingleAccountAndSetIncludePasswords(false);
+
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportStart"),
+    {},
+    prefsWindow
+  );
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportCodes")),
+    "QR codes screen should be shown now"
+  );
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportCodesNext"),
+    {},
+    prefsWindow
+  );
+
+  Assert.ok(
+    BrowserTestUtils.isHidden(prefsDocument.getElementById("qrExportCodes")),
+    "QR codes screen should be hidden"
+  );
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportSummary")),
+    "Should show summary"
+  );
+
+  const qrCodesItem = prefsDocument.getElementById("qrExportSummaryQrCodes");
+  Assert.equal(
+    qrCodesItem.dataset.l10nId,
+    "qr-export-summary-qr-count",
+    "QR code count item should use correct string"
+  );
+  Assert.deepEqual(
+    JSON.parse(qrCodesItem.dataset.l10nArgs),
+    { count: 1 },
+    "Should set correct QR code count"
+  );
+
+  const accountsItem = prefsDocument.getElementById("qrExportSummaryAccounts");
+  Assert.equal(
+    accountsItem.dataset.l10nId,
+    "qr-export-summary-accounts",
+    "Accounts item label should use correct string"
+  );
+  Assert.deepEqual(
+    JSON.parse(accountsItem.dataset.l10nArgs),
+    { count: 1 },
+    "Should set correct account count"
+  );
+
+  const accountsList = prefsDocument.getElementById(
+    "qrExportSummaryAccountList"
+  );
+  Assert.equal(
+    accountsList.childElementCount,
+    1,
+    "Should have one account item in list"
+  );
+  Assert.equal(
+    accountsList.children[0].textContent,
+    popAccount.incomingServer.prettyName,
+    "Should have pop account label in item"
+  );
+
+  const passwordsItem = prefsDocument.getElementById(
+    "qrExportSummaryPasswords"
+  );
+  Assert.equal(
+    passwordsItem.dataset.l10nId,
+    "qr-export-summary-passwords-excluded",
+    "Should show passwords excluded string"
+  );
+
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportRestart"),
+    {},
+    prefsWindow
+  );
+
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportIntro")),
+    "Should be back on intro screen"
+  );
+  Assert.ok(
+    BrowserTestUtils.isHidden(prefsDocument.getElementById("qrExportSummary")),
+    "Should no longer show summary"
+  );
+});
+
+add_task(async function test_summaryWithPasswords() {
+  selectSingleAccountAndSetIncludePasswords(true);
+
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportStart"),
+    {},
+    prefsWindow
+  );
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportCodesNext"),
+    {},
+    prefsWindow
+  );
+
+  Assert.ok(
+    BrowserTestUtils.isVisible(prefsDocument.getElementById("qrExportSummary")),
+    "Should show summary"
+  );
+
+  const passwordsItem = prefsDocument.getElementById(
+    "qrExportSummaryPasswords"
+  );
+  Assert.equal(
+    passwordsItem.dataset.l10nId,
+    "qr-export-summary-passwords-included",
+    "Should show passwords excluded string"
+  );
+
+  EventUtils.synthesizeMouseAtCenter(
+    prefsDocument.getElementById("qrExportRestart"),
+    {},
+    prefsWindow
+  );
 });
